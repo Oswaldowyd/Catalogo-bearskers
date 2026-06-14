@@ -1,0 +1,26 @@
+{
+  "skill_name": "yupoo-catalogo",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "catalogo-desde-datos",
+      "prompt": "Ya extraje los datos de mi proveedor de Yupoo (uid: ptshunfeng) — en esta carpeta están yupoo-albumes.json y categorias.json. Crea el catálogo web para mi tienda 'SneakerPerú', slogan 'Zapatillas al mejor precio', WhatsApp 51987654321, nombres de producto en español, color de acento #0a84ff. Las categorías están en chino, tradúcelas a algo entendible.",
+      "expected_output": "Proyecto completo: config.json, categorias-nombres.json traducido, productos.js con ~148 productos y nombres legibles (sin nombres de 2-3 letras), catalogo.html con el branding de SneakerPerú aplicado, scripts copiados, y revisar.json atendido vía nombres-fix.json.",
+      "files": ["fixtures/datos-extraidos/yupoo-albumes.json", "fixtures/datos-extraidos/categorias.json"]
+    },
+    {
+      "id": 1,
+      "eval_name": "pipeline-sin-red",
+      "prompt": "Quiero convertir el catálogo de mi proveedor https://ptshunfeng.x.yupoo.com/albums en una página web para mi tienda Bearskers (slogan: 'Catálogo de calzado premium', WhatsApp 51911222333, español). Son más de 2000 productos así que no scrapees todo tú — déjame el proyecto listo con los scripts y dime exactamente qué comandos corro yo en mi PC con Windows.",
+      "expected_output": "Carpeta de proyecto con los 3 scripts copiados, config.json con uid 'ptshunfeng' y branding correcto, catalogo.html generado desde el template con placeholders reemplazados, e instrucciones CMD claras y en orden (node extraer-albumes.js → python generar-productos.py → node descargar-imagenes.js --todo).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "eval_name": "reparar-fotos-rotas",
+      "prompt": "Mi catálogo está en esta carpeta pero las fotos no se muestran, todos los productos salen con el placeholder aunque la carpeta imgs/ sí tiene fotos descargadas. Creo que el script de descarga se cortó a la mitad. Arréglalo.",
+      "expected_output": "Diagnóstico correcto (descargas.json corrupto → imgs-locales.js vacío) y reparación: imgs-locales.js regenerado con los 3 álbumes que tienen fotos en imgs/, rutas válidas, catálogo funcional.",
+      "files": ["fixtures/proyecto-roto/"]
+    }
+  ]
+}
