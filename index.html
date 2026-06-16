@@ -184,17 +184,36 @@ function brandCount(brand) {
 }
 function catCount(cat) { return PRODUCTS.filter(p=>p.cat===cat).length; }
 
+function catBtnHTML(c) {
+  const n = catCount(c);
+  return `<button class="sub-btn" onclick="setCategory('cat:${c.replace(/'/g,"\\'")}',event)">${c} <span class="cat-count">${n}</span></button>`;
+}
+
 function buildSidebar() {
   document.getElementById("cnt-all").textContent = PRODUCTS.length;
-  document.getElementById("cat-list").innerHTML = BRANDS.map((brand,bi) => {
-    const total = brandCount(brand);
-    const subs = brand.cats.map(c => {
-      const n = catCount(c);
-      return `<button class="sub-btn" onclick="setCategory('cat:${c.replace(/'/g,"\\'")}',event)">${c} <span class="cat-count">${n}</span></button>`;
-    }).join("");
+
+  // 1) Grupos curados (BRANDS) — solo se muestran las categorías con productos
+  let html = BRANDS.map((brand,bi) => {
+    const cats = brand.cats.filter(c => catCount(c) > 0);
+    if (!cats.length) return "";
+    const total = cats.reduce((s,c) => s + catCount(c), 0);
+    const subs = cats.map(catBtnHTML).join("");
     return `<button class="cat-btn brand-btn" onclick="toggleBrand(${bi},this)">${brand.icon} ${brand.label} <span class="cat-count">${total}</span><i class="chevron">›</i></button>
 <div class="sub-list" id="sub-${bi}">${subs}</div>`;
   }).join("");
+
+  // 2) Grupos dinámicos — productos con campo .group (scrapeados de otras tiendas)
+  const groups = {};
+  PRODUCTS.forEach(p => { if (p.group) (groups[p.group] = groups[p.group] || new Set()).add(p.cat); });
+  Object.keys(groups).sort().forEach((g,gi) => {
+    const cats  = [...groups[g]].sort();
+    const total = PRODUCTS.filter(p => p.group === g).length;
+    const subs  = cats.map(catBtnHTML).join("");
+    html += `<button class="cat-btn brand-btn" onclick="toggleGroup('subg-${gi}','${g.replace(/'/g,"\\'")}',this)">${g} <span class="cat-count">${total}</span><i class="chevron">›</i></button>
+<div class="sub-list" id="subg-${gi}">${subs}</div>`;
+  });
+
+  document.getElementById("cat-list").innerHTML = html;
 }
 
 function toggleBrand(bi, btn) {
@@ -208,6 +227,15 @@ function toggleBrand(bi, btn) {
   setCategory("brand:"+BRANDS[bi].label, null, BRANDS[bi].label);
 }
 
+function toggleGroup(subId, label, btn) {
+  const sub = document.getElementById(subId);
+  const isOpen = sub.classList.contains("open");
+  document.querySelectorAll(".sub-list").forEach(s=>s.classList.remove("open"));
+  document.querySelectorAll(".brand-btn").forEach(b=>b.classList.remove("open"));
+  if (!isOpen) { sub.classList.add("open"); btn.classList.add("open"); }
+  setCategory("group:"+label, null, label);
+}
+
 function setCategory(cat, e, label) {
   if (e) e.stopPropagation();
   curCat = cat;
@@ -217,7 +245,7 @@ function setCategory(cat, e, label) {
     document.getElementById("cat-label").textContent = "Todos";
     document.querySelectorAll(".sub-list").forEach(s=>s.classList.remove("open"));
     document.querySelectorAll(".brand-btn").forEach(b=>b.classList.remove("open"));
-  } else if (cat.startsWith("brand:")) {
+  } else if (cat.startsWith("brand:") || cat.startsWith("group:")) {
     document.getElementById("cat-label").textContent = label || cat.slice(6);
   } else {
     // cat individual
@@ -231,19 +259,20 @@ function setCategory(cat, e, label) {
 
 function filtered() {
   const q = curSearch.toLowerCase();
-  const soloFotos = false;
-  let allowedCats = null;
+  let pool = PRODUCTS;
   if (curCat.startsWith("brand:")) {
-    const bl = curCat.slice(6);
-    const brand = BRANDS.find(b=>b.label===bl);
-    allowedCats = brand ? brand.cats : [];
+    const brand = BRANDS.find(b=>b.label===curCat.slice(6));
+    const allowed = brand ? brand.cats : [];
+    pool = PRODUCTS.filter(p => allowed.includes(p.cat));
+  } else if (curCat.startsWith("group:")) {
+    const g = curCat.slice(6);
+    pool = PRODUCTS.filter(p => p.group === g);
   } else if (curCat.startsWith("cat:")) {
-    allowedCats = [curCat.slice(4)];
+    const c = curCat.slice(4);
+    pool = PRODUCTS.filter(p => p.cat === c);
   }
-  return PRODUCTS.filter(p =>
-    (curCat==="all" || allowedCats.includes(p.cat)) &&
-    (!q||p.name.toLowerCase().includes(q)||p.cat.toLowerCase().includes(q)) &&
-    (!soloFotos||getImgs(p).length>0)
+  return pool.filter(p =>
+    !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q)
   );
 }
 

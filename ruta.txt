@@ -1,0 +1,2 @@
+cd "C:\Users\oswal\OneDrive\Documentos\Catalogo bearskers"
+node scrapear-yupoo.js

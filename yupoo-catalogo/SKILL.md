@@ -1,6 +1,6 @@
 ---
 name: yupoo-catalogo
-description: Crea un catálogo web de ecommerce completo (HTML con búsqueda, categorías y botones de WhatsApp) a partir de cualquier sitio de Yupoo (*.x.yupoo.com). Usa esta skill siempre que el usuario mencione Yupoo, un catálogo de productos de un proveedor, convertir álbumes de fotos en tienda/catálogo, o pida descargar imágenes de Yupoo — incluso si solo comparte un link x.yupoo.com sin más contexto. También para actualizar o regenerar un catálogo creado previamente con esta skill.
+description: Crea o amplía un catálogo web de ecommerce (HTML con búsqueda, categorías y botones de WhatsApp) a partir de cualquier sitio de Yupoo (*.x.yupoo.com). Usa esta skill siempre que el usuario mencione Yupoo, un catálogo de productos de un proveedor, convertir álbumes de fotos en tienda/catálogo, descargar imágenes de Yupoo, o pida scrapear SOLO ciertas categorías/secciones (shorts, t-shirts, etc.) de una tienda — incluso si solo comparte un link x.yupoo.com sin más contexto. También para actualizar/regenerar un catálogo previo, agregar productos de otra tienda a uno existente, o limpiar productos sin fotos.
 ---
 
 # Catálogo ecommerce desde Yupoo
@@ -9,6 +9,28 @@ Convierte un sitio Yupoo de proveedor (típicamente con títulos en chino) en un
 HTML autónomo: sidebar de categorías, búsqueda, scroll infinito, modal de fotos,
 botones de WhatsApp y precios opcionales. Funciona sin servidor — el usuario abre
 `catalogo.html` directamente.
+
+## Elige el camino según lo que pida el usuario
+
+Hay dos formas de llenar el catálogo. Ambas escriben el MISMO formato (`productos.js`
++ `imgs-locales.js`), así que se pueden combinar en un mismo proyecto.
+
+**A. Pipeline completo (toda la tienda, traduce del chino).** Úsalo cuando el usuario
+quiere la tienda entera y los títulos vienen casi 100% en chino. Pasos: `extraer-albumes.js`
+→ traducir categorías → `generar-productos.py` → `descargar-imagenes.js`. La traducción
+de marca y color del Paso 3 es su gran ventaja. (Pasos 1–6 más abajo.)
+
+**B. Scraper selectivo (`scrapear-yupoo.js`, un solo script interactivo).** Úsalo cuando
+el usuario quiere SOLO ciertas categorías/secciones (p.ej. "solo shorts y t-shirts"),
+cuando los títulos ya son mayormente latinos (ropa con marca/tipo en inglés), o cuando
+quiere AGREGAR productos de otra tienda a un catálogo que ya existe. El script pega un
+link de cualquier tienda, lista sus categorías en un menú, deja elegir cuáles, descarga
+las fotos, **ignora los productos sin fotos** y mergea todo sin borrar lo anterior.
+Detalles abajo en "Camino B".
+
+Si el usuario menciona "solo X", "nada más las secciones Y", "agrega los shorts de esta
+otra tienda", o comparte un link `/categories/<id>` concreto, casi siempre quiere el
+**Camino B**.
 
 ## Datos que pedir al usuario antes de empezar
 
@@ -27,21 +49,69 @@ Trabaja en una carpeta del usuario (la carpeta seleccionada o una subcarpeta con
 ```
 proyecto/
 ├── config.json            ← {"uid","storeName","tagline","wa","accent","lang"}
-├── extraer-albumes.js     ← copia de scripts/extraer-albumes.js
-├── descargar-imagenes.js  ← copia de scripts/descargar-imagenes.js
-├── generar-productos.py   ← copia de scripts/generar-productos.py
-├── yupoo-albumes.json     ← paso 1 (álbumes crudos)
-├── categorias.json        ← paso 1 (categorías en chino)
-├── categorias-nombres.json← paso 2 (TÚ traduces los nombres)
-├── nombres-fix.json       ← paso 3 (correcciones manuales de nombres)
-├── productos.js           ← paso 3 (datos del catálogo)
-├── imgs/                  ← paso 4 (fotos descargadas)
-├── imgs-locales.js        ← paso 4 (mapa de fotos)
-└── catalogo.html          ← paso 5 (el catálogo final)
+├── extraer-albumes.js     ← Camino A · copia de scripts/extraer-albumes.js
+├── generar-productos.py   ← Camino A · copia de scripts/generar-productos.py
+├── descargar-imagenes.js  ← Camino A · copia de scripts/descargar-imagenes.js
+├── scrapear-yupoo.js      ← Camino B · copia de scripts/scrapear-yupoo.js
+├── limpiar-sin-fotos.js   ← utilidad · copia de scripts/limpiar-sin-fotos.js
+├── yupoo-albumes.json     ← Camino A paso 1 (álbumes crudos)
+├── categorias.json        ← Camino A paso 1 (categorías en chino)
+├── categorias-nombres.json← Camino A paso 2 (TÚ traduces los nombres)
+├── nombres-fix.json       ← Camino A paso 3 (correcciones manuales de nombres)
+├── productos.js           ← datos del catálogo (lo escriben ambos caminos)
+├── imgs/                  ← fotos descargadas
+├── imgs-locales.js        ← mapa de fotos
+└── catalogo.html          ← el catálogo final (Paso 5)
 ```
 
-Copia los tres scripts desde `scripts/` de esta skill a la carpeta del proyecto y
-escribe `config.json` con los datos del usuario.
+Copia a la carpeta del proyecto los scripts del camino que vayas a usar (o todos) desde
+`scripts/` de esta skill, y escribe `config.json` con los datos del usuario.
+
+## Camino B — Scraper selectivo (`scrapear-yupoo.js`)
+
+Un solo script interactivo, sin dependencias (Node 18+). Sirve para tiendas nuevas y
+para agregar a un proyecto existente. Copia `scripts/scrapear-yupoo.js` al proyecto y
+dile al usuario que corra, en CMD/PowerShell dentro de la carpeta:
+
+```cmd
+node scrapear-yupoo.js
+```
+
+El script le pregunta paso a paso: (1) el link de la tienda Yupoo; (2) qué categorías
+scrapear — muestra un menú numerado y acepta números `1,5,9`, nombres `shorts,t-shirt`
+o `todas`; (3) el nombre del grupo para el menú lateral (todas las categorías elegidas
+quedan agrupadas ahí); (4) máx. fotos por producto. Luego descarga las imágenes con el
+header `Referer`, **ignora los productos sin fotos** (no entran al catálogo) y mergea en
+`productos.js` + `imgs-locales.js` sin tocar lo que ya había. Es reanudable y no duplica.
+
+Modo no interactivo (útil si ya sabes los ids de categoría):
+
+```cmd
+node scrapear-yupoo.js --url https://TIENDA.x.yupoo.com/categories/<id> --cats shorts,t-shirt --grupo "Ropa X" --max 8
+```
+
+Notas importantes para este camino:
+- Los productos llevan un campo `group`; el `catalogo.html` (desde el template) ya
+  arma automáticamente un menú colapsable por grupo, así que las secciones nuevas
+  aparecen solas. No hay que editar el HTML.
+- El nombre se limpia en JS (quita precio en ¥, medidas, códigos). Las marcas que Yupoo
+  censura con ⭐ quedan así; el usuario puede renombrarlas a mano en `productos.js`.
+- Para títulos casi 100% en chino conviene más el **Camino A** (traduce marca y color).
+- Si en el sandbox no tienes red, dale al usuario el comando para que lo corra en su PC.
+
+## Utilidad — Limpiar productos sin fotos (`limpiar-sin-fotos.js`)
+
+Si quedaron productos sin imágenes (p.ej. de una corrida vieja del Camino A), copia
+`scripts/limpiar-sin-fotos.js` al proyecto y el usuario corre `node limpiar-sin-fotos.js`
+(o `--dry` para solo ver qué quitaría). Hace respaldo en `productos.backup.js` y elimina
+de `productos.js` todo producto cuyo `id` no tenga entrada en `imgs-locales.js`.
+
+---
+
+# Camino A — Pipeline completo (toda la tienda, con traducción)
+
+Los Pasos 1 a 6 a continuación son el Camino A. El Paso 5 (generar `catalogo.html`) y el
+Paso 6 (verificar) aplican también al Camino B.
 
 ## Paso 1 — Extraer álbumes y categorías
 

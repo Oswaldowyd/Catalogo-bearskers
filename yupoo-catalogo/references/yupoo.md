@@ -19,6 +19,25 @@ Referencia técnica para cuando los scripts fallen o haya que scrapear a mano.
 - En los listados, los enlaces a álbum llevan `referrercate=<catId>` — útil para
   saber la categoría de cada álbum.
 
+### ⚠️ href absoluto vs relativo (causa común de "0 resultados")
+
+Según la tienda, los `<a>` de categorías y álbumes traen el href **relativo**
+(`href="/albums/123"`) o **absoluto** (`href="https://uid.x.yupoo.com/albums/123"`).
+Las regex deben aceptar ambos: usa `href="[^"]*\/albums\/(\d+)` y
+`href="[^"]*\/categories\/(\d+)` (con el `[^"]*` inicial), no `href="\/albums\/`.
+Además el atributo `title="..."` puede ir antes o después del href dentro del tag:
+captura el tag `<a ...>` completo y busca el title dentro, en vez de exigir un orden.
+`scrapear-yupoo.js` y la versión nueva de `extraer-albumes.js` ya lo hacen así.
+
+### Página de categorías
+
+`https://<uid>.x.yupoo.com/categories` lista todas las categorías. Muchas tiendas de
+ropa ya las nombran en inglés + chino (ej. `"SHORTS 短裤"`, `"T-SHIRT T恤"`); basta
+quitar el chino para un nombre legible. La categoría con id `0` es "sin categoría" /
+"otros" — normalmente conviene ignorarla. Cada categoría pagina con `?page=N`.
+Los títulos de álbum de ropa suelen traer precio en yuan (`￥145`), el tipo de prenda
+en inglés (SHORTS, HOODIE…) y la marca a veces **censurada con ⭐** (ej. `RA⭐⭐H LA⭐RE⭐`).
+
 ## Anti-hotlink
 
 `photo.yupoo.com` devuelve 403 si la petición no lleva header `Referer` del propio
