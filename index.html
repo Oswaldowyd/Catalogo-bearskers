@@ -205,19 +205,34 @@ function buildSidebar() {
     const cats = brand.cats.filter(c => catCount(c) > 0);
     if (!cats.length) return "";
     const total = cats.reduce((s,c) => s + catCount(c), 0);
+    const lbl = brand.label.replace(/'/g,"\\'");
+    // Si la marca tiene una sola categoría -> botón directo (sin submenú)
+    if (cats.length <= 1) {
+      return `<button class="cat-btn" onclick="setCategory('brand:${lbl}',event,'${lbl}')">${brand.icon} ${brand.label} <span class="cat-count">${total}</span></button>`;
+    }
+    // Varias categorías (Nike/Jordan, Adidas/Yeezy) -> desplegable con submenús
     const subs = cats.map(catBtnHTML).join("");
     return `<button class="cat-btn brand-btn" onclick="toggleBrand(${bi},this)">${brand.icon} ${brand.label} <span class="cat-count">${total}</span><i class="chevron">›</i></button>
 <div class="sub-list" id="sub-${bi}">${subs}</div>`;
   }).join("");
 
   // 2) Grupos dinámicos — productos con campo .group (scrapeados de otras tiendas)
+  // Emoji por grupo (si no está en el mapa, usa 🛍️ por defecto)
+  const GROUP_ICONS = { "Birkenstock":"🩴", "On cloud":"☁️" };
   const groups = {};
   PRODUCTS.forEach(p => { if (p.group) (groups[p.group] = groups[p.group] || new Set()).add(p.cat); });
   Object.keys(groups).sort().forEach((g,gi) => {
     const cats  = [...groups[g]].sort();
     const total = PRODUCTS.filter(p => p.group === g).length;
+    const gl = g.replace(/'/g,"\\'");
+    const icon = GROUP_ICONS[g] || "🛍️";
+    // Si el grupo tiene una sola categoría -> botón directo (sin submenú)
+    if (cats.length <= 1) {
+      html += `<button class="cat-btn" onclick="setCategory('group:${gl}',event,'${gl}')">${icon} ${g} <span class="cat-count">${total}</span></button>`;
+      return;
+    }
     const subs  = cats.map(catBtnHTML).join("");
-    html += `<button class="cat-btn brand-btn" onclick="toggleGroup('subg-${gi}','${g.replace(/'/g,"\\'")}',this)">${g} <span class="cat-count">${total}</span><i class="chevron">›</i></button>
+    html += `<button class="cat-btn brand-btn" onclick="toggleGroup('subg-${gi}','${gl}',this)">${icon} ${g} <span class="cat-count">${total}</span><i class="chevron">›</i></button>
 <div class="sub-list" id="subg-${gi}">${subs}</div>`;
   });
 
@@ -255,6 +270,12 @@ function setCategory(cat, e, label) {
     document.querySelectorAll(".brand-btn").forEach(b=>b.classList.remove("open"));
   } else if (cat.startsWith("brand:") || cat.startsWith("group:")) {
     document.getElementById("cat-label").textContent = label || cat.slice(6);
+    // Clic en un botón directo (sin submenú): resaltarlo y cerrar otros desplegables
+    if (e && e.currentTarget && e.currentTarget.classList.contains("cat-btn")) {
+      e.currentTarget.classList.add("active");
+      document.querySelectorAll(".sub-list").forEach(s=>s.classList.remove("open"));
+      document.querySelectorAll(".brand-btn").forEach(b=>b.classList.remove("open"));
+    }
   } else {
     // cat individual
     const catName = cat.slice(4);
