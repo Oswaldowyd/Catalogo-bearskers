@@ -99,6 +99,7 @@ function cleanProductName(raw, catFallback, id) {
   let s = decode(raw);
   s = s.replace(/[（(][^（()）]*[)）]/g, ' ');         // quita paréntesis (im 170cm...)
   s = s.replace(/[￥¥]\s*\d+(\s*[←<]\s*\d+)?/g, ' ');  // quita precios ￥145 / ￥219←399
+  s = s.replace(/^\s*\d+\s*Y\b\s*/i, ' ');             // quita precio en Yuan al inicio: "110Y", "90 Y"
   s = s.replace(/TOP|TROUSER[S]?/gi, m => m);          // (se conserva el tipo)
   s = s.replace(/[一-鿿　-〿]/g, ' '); // quita chino
   s = s.replace(/[\u{1f300}-\u{1ffff}]/gu, ' ');       // quita emojis (conserva ⭐ de marca censurada)
