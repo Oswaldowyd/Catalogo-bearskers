@@ -7,9 +7,27 @@
 const https = require('https');
 const http  = require('http');
 
-const ALLOWED_HOSTS = ['photo.yupoo.com', 'ptshunfeng.x.yupoo.com'];
-const REFERER       = 'https://ptshunfeng.x.yupoo.com/';
-const UA            = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Solo se permite el CDN de fotos de Yupoo (sirve TODAS las tiendas) y cualquier
+// subdominio de tienda *.x.yupoo.com.
+function hostPermitido(hostname) {
+  return hostname === 'photo.yupoo.com' || /\.x\.yupoo\.com$/.test(hostname);
+}
+
+// El Referer que Yupoo exige depende de la TIENDA. La URL del CDN es
+// https://photo.yupoo.com/<tienda>/<hash>/medium.jpg → tienda = primer segmento.
+// Así funciona con ptshunfeng, footaction o cualquier otra tienda.
+function refererDeUrl(parsed) {
+  if (parsed.hostname === 'photo.yupoo.com') {
+    const store = parsed.pathname.split('/').filter(Boolean)[0];
+    if (store) return `https://${store}.x.yupoo.com/`;
+  }
+  if (/\.x\.yupoo\.com$/.test(parsed.hostname)) {
+    return `https://${parsed.hostname}/`;
+  }
+  return 'https://x.yupoo.com/';
+}
 
 exports.handler = async (event) => {
   const rawUrl = event.queryStringParameters && event.queryStringParameters.url;
@@ -25,9 +43,11 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: 'URL inválida' };
   }
 
-  if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
+  if (!hostPermitido(parsed.hostname)) {
     return { statusCode: 403, body: 'Host no permitido' };
   }
+
+  const REFERER = refererDeUrl(parsed);
 
   return new Promise((resolve) => {
     const lib = parsed.protocol === 'https:' ? https : http;

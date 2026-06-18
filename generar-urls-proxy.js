@@ -1,36 +1,40 @@
 /**
- * generar-urls-proxy.js
+ * generar-urls-proxy.js  (MULTI-TIENDA)
  *
- * Lee los álbumes de productos.js, consulta Yupoo para obtener los hashes
- * de las fotos, y genera imgs-locales.js con URLs que apuntan al proxy
- * de Netlify (/.netlify/functions/img-proxy?url=...) en vez de rutas locales.
+ * Lee los productos de productos.js, detecta la TIENDA de cada uno desde su
+ * `href` (https://<tienda>.x.yupoo.com/albums/<id>), consulta Yupoo para
+ * obtener los hashes de las fotos y genera imgs-locales.js con URLs que apuntan
+ * al proxy de Netlify (/.netlify/functions/img-proxy?url=...).
+ *
+ * Funciona con CUALQUIER tienda (ptshunfeng, footaction, etc.), no solo una.
  *
  * USO:
- *   node generar-urls-proxy.js           → álbumes de productos.js
- *   node generar-urls-proxy.js --todo    → todos los álbumes de yupoo-albumes-reales.json
- *   node generar-urls-proxy.js --max 4   → máximo 4 fotos por álbum (default: 6)
+ *   node generar-urls-proxy.js            → todos los álbumes de productos.js
+ *   node generar-urls-proxy.js --max 4    → máximo 4 fotos por álbum (default: 6)
+ *   node generar-urls-proxy.js --solo-faltantes
+ *                                         → solo los que aún tienen ruta local
+ *                                           (imgs/...) o no tienen entrada de proxy
  *
  * Ejecutar cada vez que se agreguen productos nuevos, luego hacer git push.
  */
 
-const fs          = require('fs');
-const path        = require('path');
+const fs   = require('fs');
+const path = require('path');
 
-const BASE        = 'https://ptshunfeng.x.yupoo.com';
-const UID         = 'ptshunfeng';
-const PHOTO_BASE  = `https://photo.yupoo.com/${UID}`;
 const PROXY_BASE  = '/.netlify/functions/img-proxy?url=';
+const PROD_FILE   = path.join(__dirname, 'productos.js');
 const MAP_FILE    = path.join(__dirname, 'imgs-locales.js');
+const STORE_DEFAULT = 'ptshunfeng';        // tienda principal (bearskers)
 const CONCURRENCY = 4;
 const RETRIES     = 2;
 
-const args      = process.argv.slice(2);
-const MODE_ALL  = args.includes('--todo');
-const maxIdx    = args.indexOf('--max');
-const MAX_IMGS  = maxIdx >= 0 ? parseInt(args[maxIdx + 1], 10) : 6;
+const args         = process.argv.slice(2);
+const maxIdx       = args.indexOf('--max');
+const MAX_IMGS     = maxIdx >= 0 ? parseInt(args[maxIdx + 1], 10) : 6;
+const SOLO_FALTANTES = args.includes('--solo-faltantes');
 
-const UA            = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const HEADERS_PAGE  = { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9,es;q=0.8', 'Accept': 'text/html,*/*' };
+const UA           = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const HEADERS_PAGE = { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9,es;q=0.8', 'Accept': 'text/html,*/*' };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log   = m  => console.log(`[${new Date().toLocaleTimeString('es')}] ${m}`);
@@ -50,9 +54,15 @@ async function fetchText(url) {
   }
 }
 
-// ─── Extraer hashes de fotos del HTML del álbum ───────────────────────────
-function extractHashes(html) {
-  const re = new RegExp(`photo\\.yupoo\\.com/${UID}/([0-9a-f]+)/`, 'gi');
+// ─── Detectar la tienda (uid) de un href ─────────────────────────────────────
+function storeFromHref(href) {
+  const m = String(href || '').match(/https?:\/\/([^.]+)\.x\.yupoo\.com/i);
+  return m ? m[1] : STORE_DEFAULT;
+}
+
+// ─── Extraer hashes de fotos del HTML del álbum, para una tienda dada ────────
+function extractHashes(html, store) {
+  const re = new RegExp(`photo\\.yupoo\\.com/${store}/([0-9a-f]+)/`, 'gi');
   const seen = new Set(); const out = [];
   let m;
   while ((m = re.exec(html)) !== null) {
@@ -62,75 +72,78 @@ function extractHashes(html) {
   return out;
 }
 
-// ─── Obtener URLs proxy para un álbum ─────────────────────────────────────
-async function getProxyUrls(albumId) {
-  const html = await fetchText(`${BASE}/albums/${albumId}?uid=1`);
+// ─── Obtener URLs proxy para un álbum de una tienda concreta ─────────────────
+async function getProxyUrls(store, albumId) {
+  const base = `https://${store}.x.yupoo.com`;
+  const photoBase = `https://photo.yupoo.com/${store}`;
+  const html = await fetchText(`${base}/albums/${albumId}?uid=1`);
   if (!html) return [];
   if (html.includes('页面未找到')) return [];
 
-  const hashes = extractHashes(html).slice(0, MAX_IMGS);
-  return hashes.map(h => PROXY_BASE + encodeURIComponent(`${PHOTO_BASE}/${h}/medium.jpg`));
+  const hashes = extractHashes(html, store).slice(0, MAX_IMGS);
+  return hashes.map(h => PROXY_BASE + encodeURIComponent(`${photoBase}/${h}/medium.jpg`));
 }
 
-// ─── Obtener lista de álbumes ──────────────────────────────────────────────
-function getAlbumIds() {
-  if (MODE_ALL) {
-    const jsonPath = path.join(__dirname, 'yupoo-albumes-reales.json');
-    if (!fs.existsSync(jsonPath)) { console.error('No existe yupoo-albumes-reales.json'); process.exit(1); }
-    return Object.keys(JSON.parse(fs.readFileSync(jsonPath, 'utf-8')));
-  }
-
-  // Default: álbumes en productos.js
-  const prodPath = path.join(__dirname, 'productos.js');
-  if (!fs.existsSync(prodPath)) { console.error('No existe productos.js'); process.exit(1); }
-  const content = fs.readFileSync(prodPath, 'utf-8');
-  const matches = [...content.matchAll(/(\d{7,})/g)].map(m => m[1]);
-  // También buscar en index.html
-  const htmlPath = path.join(__dirname, 'index.html');
-  if (fs.existsSync(htmlPath)) {
-    const html = fs.readFileSync(htmlPath, 'utf-8');
-    [...html.matchAll(/\/albums\/(\d+)/g)].forEach(m => matches.push(m[1]));
-  }
-  return [...new Set(matches)];
+// ─── Leer un `const X = ...;` existente y devolver el dato ────────────────────
+function readJsConst(file, openChar) {
+  if (!fs.existsSync(file)) return openChar === '[' ? [] : {};
+  const c = fs.readFileSync(file, 'utf-8');
+  const start = c.indexOf(openChar);
+  const end   = c.lastIndexOf(openChar === '[' ? ']' : '}');
+  if (start < 0 || end < 0) return openChar === '[' ? [] : {};
+  try { return JSON.parse(c.slice(start, end + 1)); }
+  catch (e) { log(`⚠️  No se pudo leer ${path.basename(file)} (${e.message}).`); return openChar === '[' ? [] : {}; }
 }
+
+const esProxy = arr => Array.isArray(arr) && arr.length > 0 && arr[0].startsWith(PROXY_BASE);
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 (async () => {
-  const albumIds = getAlbumIds();
-  log(`📦 ${albumIds.length} álbumes a procesar (máx ${MAX_IMGS} fotos c/u)`);
+  const productos = readJsConst(PROD_FILE, '[');
+  if (!productos.length) { console.error('No hay productos en productos.js'); process.exit(1); }
 
-  const result = {};
-  let done = 0;
+  // Mapa actual (lo conservamos y solo sobreescribimos lo que reconvertimos)
+  const result = readJsConst(MAP_FILE, '{');
 
-  // Procesar en lotes para no saturar Yupoo
-  for (let i = 0; i < albumIds.length; i += CONCURRENCY) {
-    const batch = albumIds.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(async id => {
-      const urls = await getProxyUrls(id);
-      return { id, urls };
-    }));
-    for (const { id, urls } of results) {
-      if (urls.length > 0) result[id] = urls;
+  // Qué álbumes procesar
+  let tareas = productos.map(p => ({ id: String(p.id), store: storeFromHref(p.href) }));
+  if (SOLO_FALTANTES) {
+    tareas = tareas.filter(t => !esProxy(result[t.id]));
+  }
+  // sin duplicados por id
+  const vistos = new Set();
+  tareas = tareas.filter(t => (vistos.has(t.id) ? false : vistos.add(t.id)));
+
+  const porTienda = tareas.reduce((a, t) => ((a[t.store] = (a[t.store] || 0) + 1), a), {});
+  log(`📦 ${tareas.length} álbumes a procesar (máx ${MAX_IMGS} fotos c/u)`);
+  log(`   Tiendas: ${Object.entries(porTienda).map(([s, n]) => `${s} (${n})`).join(', ')}`);
+
+  let done = 0, conImg = 0;
+  for (let i = 0; i < tareas.length; i += CONCURRENCY) {
+    const batch = tareas.slice(i, i + CONCURRENCY);
+    const res = await Promise.all(batch.map(async t => ({ t, urls: await getProxyUrls(t.store, t.id) })));
+    for (const { t, urls } of res) {
+      if (urls.length > 0) { result[t.id] = urls; conImg++; }
       done++;
-      if (done % 10 === 0 || done === albumIds.length) {
-        log(`  ${done}/${albumIds.length} — ${Object.keys(result).length} con imágenes`);
+      if (done % 10 === 0 || done === tareas.length) {
+        log(`  ${done}/${tareas.length} — ${conImg} con imágenes esta corrida`);
       }
     }
     await sleep(200);
   }
 
-  // Guardar imgs-locales.js
-  const clean = Object.fromEntries(Object.entries(result).filter(([, u]) => u.length > 0));
+  // Guardar imgs-locales.js (solo entradas con al menos una imagen)
+  const clean = Object.fromEntries(Object.entries(result).filter(([, u]) => Array.isArray(u) && u.length > 0));
   fs.writeFileSync(MAP_FILE,
-    '// Generado por generar-urls-proxy.js — NO editar a mano\n' +
-    '// URLs apuntan al proxy Netlify para evitar bloqueo de Yupoo\n' +
+    '// Generado por generar-urls-proxy.js (multi-tienda) — NO editar a mano\n' +
+    '// URLs apuntan al proxy Netlify para evitar el bloqueo de Yupoo\n' +
     'const IMGS_LOCALES = ' + JSON.stringify(clean, null, 2) + ';\n',
     'utf-8'
   );
 
-  log(`✅ imgs-locales.js actualizado con ${Object.keys(clean).length} álbumes`);
+  log(`✅ imgs-locales.js actualizado: ${Object.keys(clean).length} álbumes con imágenes.`);
   log(`\nAhora ejecuta:`);
   log(`  git add imgs-locales.js`);
-  log(`  git commit -m "usar proxy para imágenes Yupoo"`);
+  log(`  git commit -m "proxy multi-tienda para imágenes Yupoo"`);
   log(`  git push`);
 })();

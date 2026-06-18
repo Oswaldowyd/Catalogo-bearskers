@@ -36,6 +36,7 @@ const MAP_FILE   = path.join(__dirname, 'imgs-locales.js');
 // ─── Config de red ─────────────────────────────────────────────────────────
 const CONCURRENCY = 4;     // álbumes en paralelo al bajar fotos
 const RETRIES     = 2;
+const PROXY_BASE  = '/.netlify/functions/img-proxy?url=';   // se guardan URLs de proxy (funcionan en Netlify)
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -199,17 +200,19 @@ async function downloadAlbumImages(uid, base, albumId, maxImgs) {
   if (hashes.length === 0) return [];
 
   if (!fs.existsSync(albumDir)) fs.mkdirSync(albumDir, { recursive: true });
-  const paths = [];
+  const urls = [];
+  // URL de proxy (store-aware): funciona en Netlify para CUALQUIER tienda.
+  const proxyUrl = h => PROXY_BASE + encodeURIComponent(`https://photo.yupoo.com/${uid}/${h}/medium.jpg`);
   for (let i = 0; i < hashes.length; i++) {
-    const file    = path.join(albumDir, `${i + 1}.jpg`);
-    const relPath = `imgs/${albumId}/${i + 1}.jpg`;
-    if (fs.existsSync(file) && fs.statSync(file).size > 500) { paths.push(relPath); continue; }
+    const file = path.join(albumDir, `${i + 1}.jpg`);
+    // Si ya está descargada (reanudable), igual registramos su URL de proxy.
+    if (fs.existsSync(file) && fs.statSync(file).size > 500) { urls.push(proxyUrl(hashes[i])); continue; }
     let buf = await fetchRetry(`https://photo.yupoo.com/${uid}/${hashes[i]}/medium.jpg`, headersImg, true);
     if (!buf) buf = await fetchRetry(`https://photo.yupoo.com/${uid}/${hashes[i]}/small.jpg`, headersImg, true);
-    if (buf && buf.length > 500) { fs.writeFileSync(file, buf); paths.push(relPath); }
+    if (buf && buf.length > 500) { fs.writeFileSync(file, buf); urls.push(proxyUrl(hashes[i])); }
     await sleep(120);
   }
-  return paths;
+  return urls;
 }
 
 // ─── Leer un `const X = ...;` existente y devolver el dato ────────────────────

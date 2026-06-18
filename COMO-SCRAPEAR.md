@@ -50,14 +50,35 @@ node scrapear-yupoo.js --url https://scorpio-reps.x.yupoo.com/categories/4621443
 
 ## Importante para publicar en Netlify
 
-La carpeta `imgs/` está en `.gitignore`, así que las imágenes descargadas
-**funcionan al abrir `index.html` en tu PC**, pero NO se suben a Netlify.
+La carpeta `imgs/` está en `.gitignore` (pesa mucho), así que NO se sube a
+Netlify. Para que las imágenes se vean en el sitio publicado se usa el **proxy**
+(`netlify/functions/img-proxy.js`): trae las fotos desde Yupoo sin subirlas.
 
-Tienes dos opciones para que se vean en el sitio publicado:
+**Ya no hay paso manual extra.** El scraper guarda directamente las URLs del
+proxy en `imgs-locales.js`, y tanto el proxy como el generador detectan
+**automáticamente la tienda** de cada producto (ptshunfeng, footaction, la que
+sea). El flujo nuevo es simplemente:
 
-1. **Quitar `imgs/` del `.gitignore`** y hacer `git add imgs && git commit && git push`.
-   Sube las fotos al repo (puede pesar bastante).
-2. **Usar el proxy** (como bearskers): corre `generar-urls-proxy.js` para esas
-   categorías y las imágenes se sirven vía la función de Netlify sin subirlas.
+```cmd
+node scrapear-yupoo.js          (elige tienda y categorías)
+git add productos.js imgs-locales.js
+git commit -m "nueva sección"
+git push
+```
 
-Para uso local (abrir el HTML en tu computadora) la opción descargada ya funciona.
+`index.html` detecta solo el entorno: al abrirlo en tu PC usa las fotos de la
+carpeta `imgs/`; publicado en Netlify usa el proxy.
+
+### Convertir secciones viejas que aún tienen rutas locales
+
+Si una sección que scrapeaste antes del arreglo no carga en Netlify (sus
+imágenes en `imgs-locales.js` empiezan con `imgs/...` en vez de
+`/.netlify/functions/...`), conviértelas una sola vez con:
+
+```cmd
+node generar-urls-proxy.js --solo-faltantes
+git add imgs-locales.js && git commit -m "proxy multi-tienda" && git push
+```
+
+(Corre eso en tu PC, que sí tiene acceso a Yupoo.) Quita `--solo-faltantes`
+para regenerar TODAS las URLs del proxy desde cero.

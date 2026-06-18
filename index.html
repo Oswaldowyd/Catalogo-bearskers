@@ -157,10 +157,18 @@ const BATCH = 24;       // productos por lote al hacer scroll
 // PRECIOS (opcional): crea precios.js con  const PRECIOS = {"103634284":"S/ 250", ...}
 const PRICES = (typeof PRECIOS !== "undefined") ? PRECIOS : {};
 
-// Imágenes locales descargadas con descargar-imagenes.js
+// ¿Estamos abriendo el catálogo localmente (PC) o publicado (Netlify)?
+// Local  -> usa las imágenes de la carpeta imgs/ (no se suben a Netlify por su tamaño)
+// Netlify -> usa el proxy /.netlify/functions/img-proxy que las trae de Yupoo
+const IS_LOCAL = location.protocol === "file:" ||
+  ["localhost", "127.0.0.1", ""].includes(location.hostname);
+
+// Imágenes: locales (imgs/ID/n.jpg) si abres en tu PC, proxy de Netlify si está publicado
 function getImgs(p) {
   const loc = (typeof IMGS_LOCALES !== "undefined") ? IMGS_LOCALES[String(p.id)] : null;
-  return (loc && loc.length) ? loc : [];
+  if (!loc || !loc.length) return [];
+  if (IS_LOCAL) return loc.map((_, i) => `imgs/${p.id}/${i + 1}.jpg`);
+  return loc;
 }
 function getPrice(p) { return PRICES[String(p.id)] || p.price || ""; }
 
